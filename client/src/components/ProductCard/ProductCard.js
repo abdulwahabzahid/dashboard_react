@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Flex, VStack, Text, IconButton, Box, Image, Button, Link } from '@chakra-ui/react';
-import { AddIcon, MinusIcon } from '@chakra-ui/icons';
+import { Flex, VStack, Text, IconButton, Box, Image, Button, Link, useToast, useDisclosure, AlertDialog, AlertDialogOverlay, AlertDialogContent, AlertDialogHeader, AlertDialogBody, AlertDialogFooter } from '@chakra-ui/react';
+import { AddIcon, MinusIcon, WarningIcon } from '@chakra-ui/icons';
 import { motion } from 'framer-motion';
 
 const getRandomImage = () => {
@@ -16,6 +16,12 @@ const getRandomImage = () => {
 const ProductCard = ({ product }) => {
     const [showContent, setShowContent] = useState(false);
     const [selectedVariant, setSelectedVariant] = useState(null);
+    const [selectedPrice, setSelectedPrice] = useState(null);
+    const [discountedSelectedPrice, setDiscountedSelectedPrice] = useState(null);
+    const [selectedCompetitorName, setSelectedCompetitorName] = useState(null);
+    const { isOpen, onOpen, onClose } = useDisclosure();
+    const toast = useToast();
+    const cancelRef = React.useRef();
 
     const toggleContent = () => {
         setShowContent(!showContent);
@@ -23,6 +29,51 @@ const ProductCard = ({ product }) => {
 
     const handleVariantClick = (variant) => {
         setSelectedVariant(variant);
+    };
+
+    const handleFlagClick = () => {
+        toast({
+            title: 'Flagged as really low price.',
+            description: "The competitor's price has been flagged for review.",
+            status: 'warning',
+            duration: 3000,
+            isClosable: true,
+        });
+    };
+
+    const handleUpdatePriceClick = (price, competitorName) => {
+        setSelectedPrice(price);
+        setDiscountedSelectedPrice(price); 
+        setSelectedCompetitorName(competitorName);
+        onOpen();
+    };
+
+    const confirmUpdatePrice = () => {
+        if (selectedPrice !== null && selectedCompetitorName) {
+            if (selectedVariant) {
+                const updatedCompetitors = selectedVariant.competitors.map((competitor) =>
+                    competitor.name === 'Greenthumbdepot'
+                        ? { ...competitor, price: selectedPrice, discountedPrice: discountedSelectedPrice }
+                        : competitor
+                );
+                setSelectedVariant({ ...selectedVariant, competitors: updatedCompetitors });
+            } else {
+                const updatedCompetitors = product.competitors.map((competitor) =>
+                    competitor.name === 'Greenthumbdepot'
+                        ? { ...competitor, price: selectedPrice, discountedPrice: discountedSelectedPrice }
+                        : competitor
+                );
+                // You may need to handle state updates or other effects here as required
+            }
+            toast({
+                title: 'Price Updated.',
+                description: `The product price has been updated to $${discountedSelectedPrice}.`,
+                status: 'success',
+                duration: 3000,
+                isClosable: true,
+            });
+        }
+        onClose();
     };
 
     const competitorUrls = {
@@ -34,7 +85,12 @@ const ProductCard = ({ product }) => {
     const greenthumbdepotPrice = selectedVariant
         ? selectedVariant.competitors.find(competitor => competitor.name === 'Greenthumbdepot')?.price || 0
         : product.competitors.find(competitor => competitor.name === 'Greenthumbdepot')?.price || 0;
+    const greenthumbdepotDiscountedPrice = selectedVariant
+        ? selectedVariant.competitors.find(competitor => competitor.name === 'Greenthumbdepot')?.discountedPrice || 0
+        : product.competitors.find(competitor => competitor.name === 'Greenthumbdepot')?.discountedPrice || 0;
     const lowerPricedCompetitors = (selectedVariant ? selectedVariant.competitors : product.competitors).filter(competitor => competitor.price < greenthumbdepotPrice);
+
+    const reallyLowPriceThreshold = 100; 
 
     return (
         <Flex
@@ -80,7 +136,9 @@ const ProductCard = ({ product }) => {
                 </Flex>
 
                 <Text fontSize="sm" color="gray.500">SKU: {selectedVariant ? selectedVariant.SKU : product.SKU}</Text>
-                <Text fontSize="sm" color="gray.500">Greenthumbdepot Price: ${greenthumbdepotPrice}</Text>
+                <Text fontSize="sm" color="gray.500">
+                    Greenthumbdepot Price: <Text as="span" textDecoration="line-through">${greenthumbdepotPrice}</Text> ${greenthumbdepotDiscountedPrice}
+                </Text>
 
                 <motion.div
                     initial={{ height: 0, opacity: 0 }}
@@ -97,6 +155,7 @@ const ProductCard = ({ product }) => {
                                         {product.variants.map((variant, index) => (
                                             <Button
                                                 key={index}
+                                                mt={2}
                                                 size="sm"
                                                 onClick={() => handleVariantClick(variant)}
                                                 variant={selectedVariant === variant ? 'solid' : 'outline'}
@@ -119,15 +178,40 @@ const ProductCard = ({ product }) => {
                                         padding={2}
                                         bg="gray.100"
                                         width="100%"
+                                        display="flex"
+                                        mt={4}
+                                        justifyContent="space-between"
+                                        alignItems="center"
                                     >
                                         <Link
                                             href={competitorUrls[competitor.name]}
                                             isExternal
                                             color="blue.500"
+                                            flex="1"
                                         >
                                             <Text>{competitor.name}</Text>
-                                            <Text fontSize="sm">Price: ${competitor.price}</Text>
+                                            <Text fontSize="sm">
+                                                Price: <Text as="span" textDecoration="line-through">${competitor.price}</Text> ${competitor.discountedPrice}
+                                            </Text>
                                         </Link>
+                                        {competitor.price < reallyLowPriceThreshold && (
+                                            <IconButton
+                                                icon={<WarningIcon />}
+                                                size="sm"
+                                                aria-label="Flag as low price"
+                                                colorScheme="red"
+                                                onClick={handleFlagClick}
+                                                ml={2}
+                                            />
+                                        )}
+                                        <Button
+                                            size="sm"
+                                            colorScheme="teal"
+                                            onClick={() => handleUpdatePriceClick(competitor.discountedPrice, competitor.name)}
+                                            ml={2}
+                                        >
+                                            Update Price
+                                        </Button>
                                     </Box>
                                 ))
                             ) : (
@@ -135,33 +219,54 @@ const ProductCard = ({ product }) => {
                                     <Text>No competitor with a lower price than Greenthumbdepot</Text>
                                 </Box>
                             )}
+
+                            {/* Conditional rendering for the buttons */}
+                            {showContent && (
+                                <Flex mt={4} width="100%" justifyContent="center">
+                                    <Button
+                                        size="sm"
+                                        colorScheme="red"
+                                        as="a"
+                                        href="https://greenthumbdepot.com/products/netafim-techlock-fittings?variant=48496240066843"
+                                        target="_blank"
+                                        width="35%"
+                                        p={6}
+                                    >
+                                        View Product
+                                    </Button>
+                                </Flex>
+                            )}
                         </VStack>
                     )}
                 </motion.div>
-
-                <Flex mt={4} width="100%" justifyContent="space-between">
-                    <Button
-                        size="sm"
-                        colorScheme="red"
-                        as="a"
-                        href="https://greenthumbdepot.com/products/netafim-techlock-fittings?variant=48496240066843"
-                        target="_blank"
-                        width="48%"
-                    >
-                        View Product
-                    </Button>
-                    <Button
-                        size="sm"
-                        colorScheme="teal"
-                        as="a"
-                        href="https://greenthumbdepot.com/products/netafim-techlock-fittings?variant=48496240066843"
-                        target="_blank"
-                        width="48%"
-                    >
-                        Update Price
-                    </Button>
-                </Flex>
             </VStack>
+
+            <AlertDialog
+                isOpen={isOpen}
+                onClose={onClose}
+                leastDestructiveRef={cancelRef}
+            >
+                <AlertDialogOverlay>
+                    <AlertDialogContent>
+                        <AlertDialogHeader fontSize="lg" fontWeight="bold">
+                            Confirm Price Update
+                        </AlertDialogHeader>
+
+                        <AlertDialogBody>
+                            Are you sure you want to update the price to ${selectedPrice}?
+                        </AlertDialogBody>
+
+                        <AlertDialogFooter>
+                            <Button ref={cancelRef} onClick={onClose}>
+                                Cancel
+                            </Button>
+                            <Button colorScheme="teal" onClick={confirmUpdatePrice} ml={3}>
+                                Confirm
+                            </Button>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialogOverlay>
+            </AlertDialog>
         </Flex>
     );
 };
