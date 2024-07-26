@@ -8,7 +8,7 @@ const BrandSelector = ({ brands, onSelect }) => {
     };
 
     return (
-        <Select placeholder="Select a brand" width="200px" variant="filled" onChange={handleBrandChange}>
+        <Select placeholder="Select Competitor..." width="200px" variant="filled" onChange={handleBrandChange}>
             {brands.map((brand, index) => (
                 <option key={index} value={brand}>
                     {brand}
